@@ -6,63 +6,56 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 
 
-# Cache function
-@lru_cache(maxsize=128)
-def cached_api_function():
-    print("Caching data...")
-    return asyncio.run(fetch_api())
+class APICacheManager:
+    def __init__(self):
+        self.last_cache_clear_date = datetime.now().date()
+
+    @lru_cache(maxsize=128)
+    def cached_api_function(self):
+        print("Caching data...")
+        return asyncio.run(self.fetch_api())
+
+    # Asynchronous API call
+    async def fetch_api(self):
+        print("Calling the API...")
+        async with aiohttp.ClientSession() as session:
+            async with session.get("https://api.coindesk.com/v1/bpi/currentprice/BTC.json") as response:
+                return await response.json()
+
+    # Function to clear cache if it's a new day
+    def clear_cache_if_needed(self):
+        today = datetime.now().date()
+
+        if today != self.last_cache_clear_date:
+            print("Clearing cache...")
+            self.cached_api_function.cache_clear()  # Clear the cache
+            self.last_cache_clear_date = today  # Update the date
+
+    # Threaded function to fetch and cache data
+    def thread_function(self):
+        self.clear_cache_if_needed()
+        cached_data = self.cached_api_function()
+        print(f"Bitcoin price (USD): {cached_data['bpi']['USD']['rate']}")
 
 
-# Asynchronous API call
-async def fetch_api():
-    print("Calling the API...")
-    async with aiohttp.ClientSession() as session:
-        async with session.get("https://api.coindesk.com/v1/bpi/currentprice/BTC.json") as response:
-            return await response.json()
-
-
-# Helper function to clear cache if it's a new day
-def clear_cache_if_needed():
-    global last_cache_clear_date
-    today = datetime.now().date()
-
-    if today != last_cache_clear_date:
-        print("Clearing cache...")
-        cached_api_function.cache_clear()  # Clear the cache
-        last_cache_clear_date = today  # Update the date
-
-
-# Initialize the last cache clear date
-last_cache_clear_date = datetime.now().date()
-
-
-# Threaded function to fetch and cache data
-def thread_function():
-    clear_cache_if_needed()
-
-    # Get cached API data
-    cached_data = cached_api_function()
-
-    # Print Bitcoin price from cached data
-    print(f"Bitcoin price (USD): {cached_data['bpi']['USD']['rate']}")
-
-
-# Main function to execute in parallel threads
 def test_caching_mechanism():
+    api_cache_manager = APICacheManager()
+
+    # Run two threads at the same time
     with ThreadPoolExecutor(max_workers=2) as executor:
-        futures = [executor.submit(thread_function) for _ in range(2)]
+        futures = [executor.submit(api_cache_manager.thread_function) for _ in range(2)]
 
         for future in futures:
             future.result()
 
     # Simulate a day change
-    #print("\nSimulating a new day...\n")
-    #global last_cache_clear_date
-    #last_cache_clear_date = last_cache_clear_date.replace(day=last_cache_clear_date.day - 1)
+    print("\nSimulating a new day...\n")
+    api_cache_manager.last_cache_clear_date = api_cache_manager.last_cache_clear_date.replace(
+        day=api_cache_manager.last_cache_clear_date.day - 1)
 
     # Re-run the threads to see cache clear in action
     with ThreadPoolExecutor(max_workers=2) as executor:
-        futures = [executor.submit(thread_function) for _ in range(2)]
+        futures = [executor.submit(api_cache_manager.thread_function) for _ in range(2)]
 
         for future in futures:
             future.result()
